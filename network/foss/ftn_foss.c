@@ -100,6 +100,26 @@ int svc_initconn(int fd)
 	LOG(vfs_voss_log, LOG_TRACE, "a new fd[%d] init ok!\n", fd);
 	return 0;
 }
+
+static void send_errmsg_to_fd(int fd, t_ftn_protocol_head *tkc, int rettype)
+{
+	struct conn *curcon = &acon[fd];
+	ftn_foss_peer *peer = curcon->user;
+	peer->send_close = 1;
+
+	t_ftn_protocol_err_ret ret;
+	memset(&ret, 0, sizeof(ret));
+	ret.errcmd = tkc->cmd;
+	ret.errseq = tkc->seq;
+	ret.errcode = rettype;
+	snprintf(ret.errmsg, sizeof(ret.errmsg), "%s", ftn_protocol_errmsg[rettype%FTN_PROTOCL_ERRTYPE_MAX]);
+	tkc->cmd = FTN_SERVER_PUT_ERR_PROTOCOL;
+	tkc->len = sizeof(ret);
+	tkc->seq = 0;
+	set_client_data(fd, (char *)tkc, sizeof(t_ftn_protocol_head));
+	set_client_data(fd, (char *)&ret, sizeof(ret));
+}
+
 static int check_request(int fd, char* data, int len) 
 {
 	if (len < FTN_PROTOCOL_HEAD_LENGTH)
@@ -119,16 +139,17 @@ static int check_request(int fd, char* data, int len)
 
 	int clen = tkc.len + FTN_PROTOCOL_HEAD_LENGTH;
 
-	LOG(kshow_access_log, LOG_TRACE, "%d process %08x %s\n", fd, tkc.cmd, kshow_cmd_str[tkc.cmd%KSHOW_CLIENT_ERR_REQ]);
+	LOG(kshow_access_log, LOG_TRACE, "%d process %08x %s\n", fd, tkc.cmd, kshow_cmd_str[tkc.cmd%FTN_CLIENT_ERR_REQ]);
 	int ret = process_req(&tkc, data + FTN_PROTOCOL_HEAD_LENGTH, fd);
 	if (ret)
 	{
-		if (ret < 1 || ret > KSHOW_PROTOCL_ERR_UNDEF)
-			ret = KSHOW_PROTOCL_ERR_UNDEF;
+		if (ret < 1 || ret > FTN_PROTOCL_ERR_UNDEF)
+			ret = FTN_PROTOCL_ERR_UNDEF;
+		
 		struct conn *curcon = &acon[fd];
-		t_kshow_peer *peer = curcon->user;
+		ftn_foss_peer *peer = curcon->user;
 
-		LOG(kshow_access_log, LOG_ERROR, "%s %d %08x %s %d mid = %d uid = %u\n", __func__, __LINE__, tkc.cmd, kshow_cmd_str[tkc.cmd%KSHOW_CLIENT_ERR_REQ], ret, peer->mbase.mid, peer->uid);
+		LOG(kshow_access_log, LOG_ERROR, "%s %d %08x %s %d\n", __func__, __LINE__, tkc.cmd, kshow_cmd_str[tkc.cmd%FTN_CLIENT_ERR_REQ], ret);
 		send_errmsg_to_fd(fd, &tkc, ret);
 		return clen;
 	}
