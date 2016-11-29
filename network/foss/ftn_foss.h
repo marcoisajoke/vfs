@@ -8,7 +8,9 @@
 #define __FTN_FOSS_SO_H
 #include "list.h"
 #include "global.h"
+#include "ftn_retcode.h"
 #include "ftn_cmd.h"
+#include "ftn_foss_protocol.h"
 #include "vfs_init.h"
 #include "common.h"
 #include <stdint.h>
@@ -22,7 +24,7 @@
 
 enum SOCK_STAT {LOGOUT = 0, CONNECTED, LOGIN, HB_SEND, HB_RSP, IDLE, RECV_LAST, SEND_LAST, PREPARE_SYNCFILE, SYNCFILEING, SYNCFILE_POST, SYNCFILE_OK, PREPARE_SENDFILE, SENDFILEING, SENDFILE_OK};
 
-typedef int (*ftn_access_request_cb) (t_kshow_protocol_head *tkc, char *body, int fd);
+typedef int (*ftn_foss_request_cb) (t_ftn_protocol_head *tkc, char *body, int fd);
 
 extern const char *sock_stat_cmd[] ;
 
@@ -31,7 +33,8 @@ typedef struct {
 	int datalen;
 	time_t opentime;
 	char outfile[256];
-} t_voss_data_info;
+	uint32_t identify;
+} t_foss_data_info;
 
 typedef struct {
 	list_head_t alist;
@@ -43,8 +46,8 @@ typedef struct {
 	int fd;
 	int local_in_fd; /* 接受vfs侧数据时，写到本地的文件句柄*/
 	uint32_t hbtime;
-	t_voss_data_info datainfo;
-	uint8_t sock_stat;
+	t_foss_data_info datainfo;
+	uint8_t s_type;
 	uint8_t server_stat;
 	uint8_t role;
 	uint8_t bk;

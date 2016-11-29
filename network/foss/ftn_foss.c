@@ -29,7 +29,7 @@ typedef struct {
 t_client_stat c_stat;
 
 extern const char *s_server_stat[STAT_MAX];
-int vfs_voss_log = -1;
+int ftn_foss_log = -1;
 
 int voss_stat_interval = 120;
 
@@ -54,10 +54,10 @@ int svc_init()
 	int logsize = myconfig_get_intval("log_voss_logsize", 100);
 	int logintval = myconfig_get_intval("log_voss_logtime", 3600);
 	int lognum = myconfig_get_intval("log_voss_lognum", 10);
-	vfs_voss_log = registerlog(logname, loglevel, logsize, logintval, lognum);
-	if (vfs_voss_log < 0)
+	ftn_foss_log = registerlog(logname, loglevel, logsize, logintval, lognum);
+	if (ftn_foss_log < 0)
 		return -1;
-	LOG(vfs_voss_log, LOG_NORMAL, "svc_init init log ok!\n");
+	LOG(ftn_foss_log, LOG_NORMAL, "svc_init init log ok!\n");
 	INIT_LIST_HEAD(&activelist);
 	int i = 0;
 	for (i = 0; i < 256; i++)
@@ -73,14 +73,14 @@ int svc_init()
 
 int svc_initconn(int fd) 
 {
-	LOG(vfs_voss_log, LOG_TRACE, "%s:%s:%d\n", ID, FUNC, LN);
+	LOG(ftn_foss_log, LOG_TRACE, "%s:%s:%d\n", ID, FUNC, LN);
 	uint32_t ip = getpeerip(fd);
 	struct conn *curcon = &acon[fd];
 	if (curcon->user == NULL)
 		curcon->user = malloc(sizeof(ftn_foss_peer));
 	if (curcon->user == NULL)
 	{
-		LOG(vfs_voss_log, LOG_ERROR, "malloc err %m\n");
+		LOG(ftn_foss_log, LOG_ERROR, "malloc err %m\n");
 		return RET_CLOSE_MALLOC;
 	}
 	ftn_foss_peer *peer;
@@ -91,13 +91,14 @@ int svc_initconn(int fd)
 	peer->fd = fd;
 	peer->con_ip = ip;
 	peer->local_in_fd = -1;
+	peer->s_type = S_TYPE_KSHOW_CLIENT;
 	ip2str(peer->ip, ip);
 	INIT_LIST_HEAD(&(peer->alist));
 	INIT_LIST_HEAD(&(peer->hlist));
 	INIT_LIST_HEAD(&(peer->cfglist));
 	list_move_tail(&(peer->alist), &activelist);
 	list_add_head(&(peer->hlist), &online_list[ip&ALLMASK]);
-	LOG(vfs_voss_log, LOG_TRACE, "a new fd[%d] init ok!\n", fd);
+	LOG(ftn_foss_log, LOG_TRACE, "a new fd[%d] init ok!\n", fd);
 	return 0;
 }
 
@@ -124,7 +125,7 @@ static int check_request(int fd, char* data, int len)
 {
 	if (len < FTN_PROTOCOL_HEAD_LENGTH)
 	{
-		LOG(kshow_access_log, LOG_DEBUG, "%d head not long\n", fd);
+		LOG(ftn_foss_log, LOG_DEBUG, "%d head not long\n", fd);
 		return 0;
 	}
 
@@ -133,13 +134,13 @@ static int check_request(int fd, char* data, int len)
 
 	if (tkc.len > (len - FTN_PROTOCOL_HEAD_LENGTH))
 	{
-		LOG(kshow_access_log, LOG_DEBUG, "%d body not long %08x %08x %08x\n", fd, tkc.cmd, tkc.len, len);
+		LOG(ftn_foss_log, LOG_DEBUG, "%d body not long %08x %08x %08x\n", fd, tkc.cmd, tkc.len, len);
 		return 0;
 	}
 
 	int clen = tkc.len + FTN_PROTOCOL_HEAD_LENGTH;
 
-	LOG(kshow_access_log, LOG_TRACE, "%d process %08x %s\n", fd, tkc.cmd, kshow_cmd_str[tkc.cmd%FTN_CLIENT_ERR_REQ]);
+	LOG(ftn_foss_log, LOG_TRACE, "%d process %08x %s\n", fd, tkc.cmd, ftn_cmd_str[tkc.cmd%FTN_CLIENT_ERR_REQ]);
 	int ret = process_req(&tkc, data + FTN_PROTOCOL_HEAD_LENGTH, fd);
 	if (ret)
 	{
@@ -149,7 +150,7 @@ static int check_request(int fd, char* data, int len)
 		struct conn *curcon = &acon[fd];
 		ftn_foss_peer *peer = curcon->user;
 
-		LOG(kshow_access_log, LOG_ERROR, "%s %d %08x %s %d\n", __func__, __LINE__, tkc.cmd, kshow_cmd_str[tkc.cmd%FTN_CLIENT_ERR_REQ], ret);
+		LOG(ftn_foss_log, LOG_ERROR, "%s %d %08x %s %d\n", __func__, __LINE__, tkc.cmd, ftn_cmd_str[tkc.cmd%FTN_CLIENT_ERR_REQ], ret);
 		send_errmsg_to_fd(fd, &tkc, ret);
 		return clen;
 	}
@@ -163,18 +164,18 @@ static int check_req(int fd)
 	size_t datalen;
 	if (get_client_data(fd, &data, &datalen))
 	{
-		LOG(kshow_access_log, LOG_TRACE, "fd[%d] no data!\n", fd);
+		LOG(ftn_foss_log, LOG_TRACE, "fd[%d] no data!\n", fd);
 		return RECV_ADD_EPOLLIN;  /*no suffic data, need to get data more */
 	}
 	int clen = check_request(fd, data, datalen);
 	if (clen < 0)
 	{
-		LOG(kshow_access_log, LOG_DEBUG, "fd[%d] data error!\n", fd);
+		LOG(ftn_foss_log, LOG_DEBUG, "fd[%d] data error!\n", fd);
 		return RECV_CLOSE;
 	}
 	if (clen == 0)
 	{
-		LOG(kshow_access_log, LOG_DEBUG, "fd[%d] data not suffic!\n", fd);
+		LOG(ftn_foss_log, LOG_DEBUG, "fd[%d] data not suffic!\n", fd);
 		return RECV_ADD_EPOLLIN;
 	}
 	consume_client_data(fd, clen);
@@ -219,7 +220,7 @@ void svc_timeout()
 	{
 		if (now - peer->hbtime > to)
 		{
-			LOG(vfs_voss_log, LOG_DEBUG, "timeout close %d [%lu:%lu]\n", peer->fd, now, peer->hbtime);
+			LOG(ftn_foss_log, LOG_DEBUG, "timeout close %d [%lu:%lu]\n", peer->fd, now, peer->hbtime);
 			do_close(peer->fd);
 		}
 	}
@@ -231,7 +232,7 @@ void svc_finiconn(int fd)
 	if (curcon->user == NULL)
 		return;
 	ftn_foss_peer *peer = (ftn_foss_peer *) curcon->user;
-	LOG(vfs_voss_log, LOG_NORMAL, "close %s\n", peer->ip);
+	LOG(ftn_foss_log, LOG_NORMAL, "close %s\n", peer->ip);
 	t_voss_data_info *datainfo = &(peer->datainfo);
 	datainfo->opentime = 0;
 	check_close_local(fd);
